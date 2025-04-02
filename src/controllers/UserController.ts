@@ -1,6 +1,6 @@
 import {Request , Response} from "express";
-import { generateToken, registerUser } from "../models/UserModel";
-
+import { findUserByEmail, generateToken, registerUser } from "../models/UserModel";
+import bcrypt from "bcrypt";
 
 export const registerUserController = async(req:Request , res:Response):Promise<void>=>{
     try {
@@ -19,6 +19,41 @@ export const registerUserController = async(req:Request , res:Response):Promise<
             user,
             token
         })
+    } catch (error) {
+        
+    }
+}
+
+
+export const loginUserController = async(req:Request , res:Response):Promise<void>=>{
+    const {email , password} = req.body ;
+    try {
+        const user = await findUserByEmail(email);
+        if (!user || !user.password || !(await bcrypt.compare(password, user.password))) {
+             res.status(401).json({ error: "Invalid credentials" });
+          }
+
+          if (!user) {
+              res.status(401).json({ error: "Invalid credentials" });
+              return;
+          }
+
+          res.status(201).json({
+            message:"User Logged in successfully",
+             user,
+             token: generateToken(user)
+          })
+    } catch (error) {
+        res.status(500).json({
+            error:"Login Failed"
+        })
+    }
+}
+
+
+export const googleOAuthLoginController = async(req:Request , res:Response):Promise<void>=>{
+    try {
+        
     } catch (error) {
         
     }

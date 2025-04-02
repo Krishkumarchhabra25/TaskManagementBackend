@@ -15,6 +15,12 @@ interface User {
 }
 
 
+export const findUserByEmail = async (email: string): Promise<User | null> => {
+    const result = await pool.query(`SELECT * FROM users WHERE email = $1`, [email]);
+    return result.rows.length ? result.rows[0] : null;
+  };
+
+
 export const registerUser = async(username:string , email:string , password:string):Promise<any>=>{
     const hashedPassword = await bcrypt.hash(password , 10);
 

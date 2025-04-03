@@ -48,18 +48,32 @@ export const loginUser = async(email:string , password:string):Promise<any | nul
 }
 
 
-export const googleOAuthLogin = async(email:string , username:string , googleId:string):Promise<any>=>{
-    const result = await pool.query(`SELECT * FROM users WHERE email = $1` , [email]);
-
-    if(result.rows.length > 0) return result.rows[0];
+export const googleOAuthLogin = async (email: string, username: string, providerId: string) => {
+    const result = await pool.query(`SELECT * FROM users WHERE email = $1`, [email]);
+    if (result.rows.length > 0) return result.rows[0];
 
     const newUser = await pool.query(
-        `INSERT INTO users (username , email , provider , provider_id , role) VALUES ($1 , $2 , 'google' , $3 , 'user') RETURNING *`,
-        [username , email , googleId]
+        `INSERT INTO users (username, email, provider, provider_id, role) VALUES ($1, $2, 'google', $3, 'user') RETURNING *`,
+        [username, email, providerId]
     );
 
     return newUser.rows[0];
-}
+};
+
+export const githubOAuthLogin = async (email: string, username: string, githubId: string): Promise<User> => {
+    let user = await pool.query(`SELECT * FROM users WHERE email = $1`, [email]);
+  
+    if (user.rowCount === 0) {
+      const newUser = await pool.query(
+        `INSERT INTO users (username, email, provider, provider_id, role) VALUES ($1, $2, 'github', $3, 'user') RETURNING *`,
+        [username, email, githubId]
+      );
+      return newUser.rows[0];
+    }
+  
+    return user.rows[0];
+  };
+  
 
 export const generateToken = (user: User): string => {
     if (!process.env.JWT_SECRET) {

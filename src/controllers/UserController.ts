@@ -1,7 +1,14 @@
 import {Request , Response} from "express";
-import { findUserByEmail, generateToken, githubOAuthLogin, googleOAuthLogin, registerUser } from "../models/UserModel";
+import { findUserByEmail, generateToken, githubOAuthLogin, googleOAuthLogin, markSetupComplete, registerUser } from "../models/UserModel";
 import bcrypt from "bcrypt";
-
+import pool from "../config/db";
+declare global {
+    namespace Express {
+      interface Request {
+        user?: any;
+      }
+    }
+  }
 export const registerUserController = async(req:Request , res:Response):Promise<void>=>{
     try {
         const {username , email , password} = req.body;
@@ -142,3 +149,61 @@ export const githubOAuthController = async (req: Request, res: Response):Promise
       res.status(500).json({ error: "GitHub login failed" });
     }
   };
+
+
+  export const handleSetup = async(req:Request , res:Response):Promise<void>=>{
+    try {
+        const {choice , organizationName} = req.body;
+        const userId = req.user?.id
+
+        if(!userId){
+            res.status(401).json({
+                error: "Unauthorized: User Id is missing"
+            });
+            return 
+        }
+
+        if (!choice || !["organization", "personal"].includes(choice)) {
+            res.status(400).json({ error: "Invalid setup choice. Choose 'organization' or 'personal'." });
+            return;
+          }
+          await pool.query("BEGIN");
+
+          await markSetupComplete(userId);
+
+          if(choice === "organization"){
+
+            const orgResult = await pool.query(
+                `INSERT INTO organizations (name, created_by)
+                 VALUES ($1, $2) RETURNING id, name`,
+                [organizationName || "My Organization", userId]
+            );
+            
+
+            const orgId = orgResult.rows[0].id;
+            
+            await pool.query(
+                `INSERT INTO user_organizations (user_id , organization_id , role) VALUES ($1 , $2 , 'admin')` ,
+                [userId , orgId]
+            )
+
+            await pool.query("COMMIT");
+
+            res.status(201).json({
+               message:"Organization setup complete",
+               organization: orgResult.rows[0]
+            })
+             return ;
+          }
+
+          res.status(200).json({
+            message: "personal setup complete"
+          })
+
+    } catch (error:any) {
+        await pool.query("ROLLBACK");
+        console.error("❌ Setup Error:", error);
+        res.status(500).json({ error: "Setup failed. Please try again.", details: error.message });
+    }
+    
+  }

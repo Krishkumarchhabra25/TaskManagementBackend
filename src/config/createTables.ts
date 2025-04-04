@@ -1,7 +1,38 @@
 import { Pool } from "pg";
 import pool from "./db";
+
+
+export const createEnums = async (): Promise<void> => {
+  try {
+    await pool.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'auth_provider') THEN
+          CREATE TYPE auth_provider AS ENUM ('email', 'google', 'github');
+        END IF;
+        
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+          CREATE TYPE user_role AS ENUM ('user', 'owner');
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'org_role') THEN
+          CREATE TYPE org_role AS ENUM ('admin', 'member');
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'invitation_status') THEN
+          CREATE TYPE invitation_status AS ENUM ('pending', 'accepted', 'expired');
+        END IF;
+      END $$;
+    `);
+    console.log("✅ ENUM types created successfully!");
+  } catch (error) {
+    console.error("❌ Error creating ENUM types:", error);
+  }
+};
+
 const createTables = async (): Promise<void> => {
     try {
+      await createEnums();
       await pool.query(`  
         CREATE TABLE IF NOT EXISTS users (
           id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -11,10 +42,40 @@ const createTables = async (): Promise<void> => {
           provider VARCHAR(20) CHECK (provider IN ('email', 'google' , 'github')) NOT NULL DEFAULT 'email',
           provider_id TEXT,
           role VARCHAR(20) CHECK (role IN ('admin', 'user')) NOT NULL DEFAULT 'user',
+          setup_complete BOOLEAN DEFAULT FALSE,
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW()
         );
-  
+
+        CREATE TABLE IF NOT EXISTS organizations (
+          id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          created_by UUID REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS user_organizations (
+         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+         organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+         role VARCHAR(20) CHECK (role IN ('admin', 'user')) NOT NULL DEFAULT 'user',
+         created_at TIMESTAMP DEFAULT NOW(),
+         updated_at TIMESTAMP DEFAULT NOW(),
+         PRIMARY KEY (user_id, organization_id)
+      );      
+
+      CREATE TABLE IF NOT EXISTS invitations (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+        inviter_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        email VARCHAR(100) NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        status VARCHAR(20) CHECK (status IN ('pending', 'accepted', 'expired')) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL
+     );
+
+
         CREATE TABLE IF NOT EXISTS tasks (
           id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
           title VARCHAR(255) NOT NULL,

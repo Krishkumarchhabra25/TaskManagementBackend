@@ -20,6 +20,16 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
     return result.rows.length ? result.rows[0] : null;
   };
 
+  export const findUserById = async (id: string): Promise<User | null> => {
+    try {
+        const result = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+        return result.rows.length ? result.rows[0] : null;
+    } catch (error) {
+        console.error("Error finding user by ID:", error);
+        throw new Error("Database query failed");
+    }
+};
+
 
 export const registerUser = async(username:string , email:string , password:string):Promise<any>=>{
     const hashedPassword = await bcrypt.hash(password , 10);
@@ -31,19 +41,43 @@ export const registerUser = async(username:string , email:string , password:stri
     return result.rows[0];
 }
 
+export const markSetupComplete = async (userId:string):Promise<void>=>{
+    try {
+        await pool.query(
+            `UPDATE users SET setup_complete = true WHERE id = $1`,
+            [userId]
+        );
+        
+    } catch (error) {
+        console.log("Error marking setup complete:" , error);
+        throw new Error("Database query failed");
+    }
+}
+
 export const loginUser = async(email:string , password:string):Promise<any | null>=>{
-    const result = await pool.query(`SELECT * FROM users WHERE email = $1` , [email]);
-    if(result.rows.length === 0){
-        return null;
+
+    try {
+        const result = await pool.query(`SELECT * FROM users WHERE email = $1` , [email]);
+        if(result.rows.length === 0){
+            return "User not found";
+        }
+    
+        const user = result.rows[0];
+        if (!user.password) {
+            return "OAuth user - please log in with Google or GitHub";
+        }
+        
+        const passwordMatch = await bcrypt.compare(password , user.password);
+        if(!passwordMatch){
+            return "Incorrect password"; 
+        }
+    
+        return user ;
+    } catch (error) {
+        console.error("Error logging in user:", error);
+        throw new Error("Login failed");
     }
 
-    const user = result.rows[0];
-    const passwordMatch = await bcrypt.compare(password , user.password);
-    if(!passwordMatch){
-        return null 
-    }
-
-    return user ;
   
 }
 

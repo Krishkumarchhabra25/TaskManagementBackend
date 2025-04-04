@@ -5,7 +5,7 @@ import pool from "./config/db";
 import createTables from "./config/createTables";
 import TaskRouter from "./routes/TaskRoutes"
 import UserRouter from "./routes/UserRoutes";
-
+import InvitationRoutes from "./routes/InvitationRoutes"
 
 dotenv.config();
 
@@ -21,6 +21,7 @@ app.use(cors());
 //Routes
 app.use("/api/task" ,TaskRouter )
 app.use('/api/user', UserRouter )
+app.use('/api/invite',InvitationRoutes  )
 
 
 app.get("/" ,  async (req, res)=>{

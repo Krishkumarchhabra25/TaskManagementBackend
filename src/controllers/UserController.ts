@@ -151,59 +151,72 @@ export const githubOAuthController = async (req: Request, res: Response):Promise
   };
 
 
-  export const handleSetup = async(req:Request , res:Response):Promise<void>=>{
+  export const handleSetup = async (req: Request, res: Response): Promise<void> => {
     try {
-        const {choice , organizationName} = req.body;
-        const userId = req.user?.id
-
-        if(!userId){
-            res.status(401).json({
-                error: "Unauthorized: User Id is missing"
-            });
-            return 
-        }
-
-        if (!choice || !["organization", "personal"].includes(choice)) {
-            res.status(400).json({ error: "Invalid setup choice. Choose 'organization' or 'personal'." });
-            return;
-          }
-          await pool.query("BEGIN");
-
-          await markSetupComplete(userId);
-
-          if(choice === "organization"){
-
-            const orgResult = await pool.query(
-                `INSERT INTO organizations (name, created_by)
-                 VALUES ($1, $2) RETURNING id, name`,
-                [organizationName || "My Organization", userId]
-            );
-            
-
-            const orgId = orgResult.rows[0].id;
-            
-            await pool.query(
-                `INSERT INTO user_organizations (user_id , organization_id , role) VALUES ($1 , $2 , 'admin')` ,
-                [userId , orgId]
-            )
-
-            await pool.query("COMMIT");
-
-            res.status(201).json({
-               message:"Organization setup complete",
-               organization: orgResult.rows[0]
-            })
-             return ;
-          }
-
-          res.status(200).json({
-            message: "personal setup complete"
-          })
-
-    } catch (error:any) {
-        await pool.query("ROLLBACK");
-        console.error("❌ Setup Error:", error);
-        res.status(500).json({ error: "Setup failed. Please try again.", details: error.message });
+      const { choice, organizationName } = req.body;
+      const userId = req.user?.id;
+  
+      if (!userId) {
+         res.status(401).json({ error: "Unauthorized: No user ID found" });
+         return
+      }
+  
+      console.log("Setup started for user:", userId, "Choice:", choice);
+  
+      await pool.query("BEGIN");
+  
+      // First update role if organization is chosen
+      if (choice === "organization") {
+        await pool.query(
+          `UPDATE users SET 
+            role = 'owner'::user_role, 
+            setup_complete = true 
+           WHERE id = $1`,
+          [userId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE users SET 
+            setup_complete = true 
+           WHERE id = $1`,
+          [userId]
+        );
+      }
+  
+      console.log("User setup_complete field updated");
+  
+      if (choice === "organization") {
+        // Create organization
+        const org = await pool.query(
+          `INSERT INTO organizations (name, owner_id)
+           VALUES ($1, $2) RETURNING id`,
+          [organizationName || "My Organization", userId]
+        );
+  
+        // Add user as admin
+        await pool.query(
+          `INSERT INTO user_organizations (user_id, organization_id, role)
+           VALUES ($1, $2, 'admin'::org_role)`,
+          [userId, org.rows[0].id]
+        );
+  
+        await pool.query("COMMIT");
+         res.json({
+          message: "Organization setup complete",
+          organization: org.rows[0]
+        });
+        return
+      }
+  
+      await pool.query("COMMIT");
+      res.json({ message: "Personal setup complete" });
+  
+    } catch (error: any) {
+      await pool.query("ROLLBACK");
+      console.error("Setup Error:", error);
+      res.status(500).json({ 
+        error: "Setup failed",
+        details: error.message
+      });
     }
-    
-  }
+  };

@@ -34,35 +34,36 @@ const createTables = async (): Promise<void> => {
     try {
       await createEnums();
       await pool.query(`  
-        CREATE TABLE IF NOT EXISTS users (
-          id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-          username VARCHAR(50) UNIQUE NOT NULL,
-          email VARCHAR(100) UNIQUE NOT NULL,
-          password TEXT NOT NULL,
-          provider VARCHAR(20) CHECK (provider IN ('email', 'google' , 'github')) NOT NULL DEFAULT 'email',
-          provider_id TEXT,
-          role VARCHAR(20) CHECK (role IN ('admin', 'user')) NOT NULL DEFAULT 'user',
-          setup_complete BOOLEAN DEFAULT FALSE,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
-        );
+     
+          CREATE TABLE IF NOT EXISTS users (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password TEXT,
+        provider auth_provider NOT NULL DEFAULT 'email',
+        provider_id TEXT,
+        role user_role NOT NULL DEFAULT 'user',
+        setup_complete BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
 
-        CREATE TABLE IF NOT EXISTS organizations (
-          id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          created_by UUID REFERENCES users(id) ON DELETE CASCADE,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
-        );
+         CREATE TABLE IF NOT EXISTS organizations (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
 
-        CREATE TABLE IF NOT EXISTS user_organizations (
-         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-         organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-         role VARCHAR(20) CHECK (role IN ('admin', 'user')) NOT NULL DEFAULT 'user',
-         created_at TIMESTAMP DEFAULT NOW(),
-         updated_at TIMESTAMP DEFAULT NOW(),
-         PRIMARY KEY (user_id, organization_id)
-      );      
+       CREATE TABLE IF NOT EXISTS user_organizations (
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+        role org_role NOT NULL DEFAULT 'member',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (user_id, organization_id)
+      );
 
       CREATE TABLE IF NOT EXISTS invitations (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -70,10 +71,11 @@ const createTables = async (): Promise<void> => {
         inviter_id UUID REFERENCES users(id) ON DELETE CASCADE,
         email VARCHAR(100) NOT NULL,
         token TEXT NOT NULL UNIQUE,
-        status VARCHAR(20) CHECK (status IN ('pending', 'accepted', 'expired')) DEFAULT 'pending',
+        status invitation_status DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT NOW(),
         expires_at TIMESTAMP NOT NULL
-     );
+      );
+
 
 
         CREATE TABLE IF NOT EXISTS tasks (

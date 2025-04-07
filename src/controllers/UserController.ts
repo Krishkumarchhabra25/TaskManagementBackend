@@ -59,96 +59,140 @@ export const loginUserController = async(req:Request , res:Response):Promise<voi
 
 
 export const googleOAuthLoginController = async (req: Request, res: Response): Promise<void> => {
-    const { code } = req.body;
-    try {
-        const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                client_id: process.env.GOOGLE_CLIENT_ID,
-                client_secret: process.env.GOOGLE_CLIENT_SECRET,
-                code,
-                grant_type: "authorization_code",
-                redirect_uri: process.env.GOOGLE_REDIRECT_URI
-            }),
-        });
+  const { code } = req.body;
 
-        const tokenData = await tokenResponse.json();
-        if (tokenData.error) throw new Error(tokenData.error);
+  if (!code) {
+      res.status(400).json({ error: "Authorization code is required" });
+      return;
+  }
 
-        const { access_token } = tokenData;
+  try {
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+              client_id: process.env.GOOGLE_CLIENT_ID,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET,
+              code,
+              grant_type: "authorization_code",
+              redirect_uri: process.env.GOOGLE_REDIRECT_URI
+          }),
+      });
 
-        const userResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-            headers: { Authorization: `Bearer ${access_token}` },
-        });
+      const tokenData = await tokenResponse.json();
+      if (tokenData.error || !tokenData.access_token) {
+          throw new Error(tokenData.error || "Token exchange failed");
+      }
 
-        const userData = await userResponse.json();
-        if (!userResponse.ok) throw new Error(userData.error);
+      const userResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
 
-        const { email, name } = userData;
+      const userData = await userResponse.json();
+      if (!userResponse.ok) {
+          throw new Error(userData.error || "Failed to fetch user info");
+      }
 
-        let user = await findUserByEmail(email);
-        if (!user) {
-            user = await googleOAuthLogin(email, name, "google");
-        }
+      const { email, name } = userData;
+      if (!email) {
+          res.status(400).json({ error: "Email not found in Google profile" });
+          return;
+      }
 
-        if (!user) {
-            res.status(500).json({ error: "User creation failed" });
-            return;
-        }
+      let user = await findUserByEmail(email);
+      if (!user) {
+          user = await googleOAuthLogin(email, name, "google");
+      }
 
-        res.json({
-            user,
-            token: generateToken(user),
-        });
+      if (!user) {
+          res.status(500).json({ error: "User creation failed" });
+          return;
+      }
 
-    } catch (error) {
-        console.error("Google OAuth Login Error:", error);
-        res.status(500).json({ error: "Google login failed" });
-    }
+      res.status(200).json({
+          user,
+          token: generateToken(user),
+      });
+
+  } catch (error: any) {
+      console.error("Google OAuth Login Error:", error.message);
+      res.status(500).json({ error: "Google login failed" });
+  }
 };
 
 
 
-export const githubOAuthController = async (req: Request, res: Response):Promise<void> => {
-    const { code } = req.query;
-  
-    try {
+export const githubOAuthController = async (req: Request, res: Response): Promise<void> => {
+  const { code } = req.query;
+
+  if (!code || typeof code !== "string") {
+      res.status(400).json({ error: "Authorization code is required" });
+      return;
+  }
+
+  try {
       const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
-        method: "POST",
-        headers: { "Accept": "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: process.env.GITHUB_CLIENT_ID,
-          client_secret: process.env.GITHUB_CLIENT_SECRET,
-          code,
-        }),
+          method: "POST",
+          headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+              client_id: process.env.GITHUB_CLIENT_ID,
+              client_secret: process.env.GITHUB_CLIENT_SECRET,
+              code,
+          }),
       });
-  
+
       const tokenData = await tokenResponse.json();
-      if (!tokenResponse.ok) throw new Error(tokenData.error);
-  
+      if (!tokenResponse.ok || !tokenData.access_token) {
+          throw new Error(tokenData.error || "Token exchange failed");
+      }
+
       const { access_token } = tokenData;
-  
+
       const userResponse = await fetch("https://api.github.com/user", {
-        headers: { Authorization: `Bearer ${access_token}` },
+          headers: { Authorization: `Bearer ${access_token}` },
       });
-  
+
       const userData = await userResponse.json();
-      if (!userResponse.ok) throw new Error(userData.error);
-  
-      const { login, email } = userData;
-  
+      if (!userResponse.ok) {
+          throw new Error(userData.message || "Failed to fetch user info");
+      }
+
+      let { login, email } = userData;
+
+      // Fallback if GitHub doesn't return email
+      if (!email) {
+          const emailResponse = await fetch("https://api.github.com/user/emails", {
+              headers: { Authorization: `Bearer ${access_token}` },
+          });
+          const emails = await emailResponse.json();
+          const primary = emails.find((e: any) => e.primary && e.verified);
+          email = primary?.email;
+      }
+
+      if (!email) {
+          res.status(400).json({ error: "Email not found in GitHub profile" });
+          return;
+      }
+
       let user = await findUserByEmail(email);
       if (!user) {
-        user = await githubOAuthLogin(login, email, "github");
+          user = await githubOAuthLogin(login, email, "github");
       }
-  
-      res.json({ user, token: generateToken(user) });
-    } catch (error) {
-      console.error("GitHub OAuth Error:", error);
+
+      if (!user) {
+          res.status(500).json({ error: "User creation failed" });
+          return;
+      }
+
+      res.status(200).json({ user, token: generateToken(user) });
+  } catch (error: any) {
+      console.error("GitHub OAuth Error:", error.message);
       res.status(500).json({ error: "GitHub login failed" });
-    }
-  };
+  }
+};
 
 
   export const handleSetup = async (req: Request, res: Response): Promise<void> => {

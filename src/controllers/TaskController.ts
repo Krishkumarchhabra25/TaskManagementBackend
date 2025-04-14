@@ -9,7 +9,7 @@ interface CreateTaskRequest extends Request {
         status: "pending" | "in-progress" | "completed";
         priority: "low" | "medium" | "high";
         due_date: Date | null;
-        owner_id: string;
+        owner_id: string; 
     };
 }
 

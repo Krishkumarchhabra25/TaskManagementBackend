@@ -9,53 +9,89 @@ declare global {
       }
     }
   }
-export const registerUserController = async(req:Request , res:Response):Promise<void>=>{
+  export const registerUserController = async (req: Request, res: Response): Promise<void> => {
     try {
-        const {username , email , password} = req.body;
-        if(!username || !email || !password){
-            res.status(400).json({
-                 message:"Please provide all the fields"
-            })
-            return ;
-        }
-
-        const user = await registerUser(username , email ,password);
-        const token = generateToken(user);
-        res.status(201).json({
-            message:"User created successfully",
-            user,
-            token
-        })
+      const { username, email, password } = req.body;
+  
+      if (!username || !email || !password) {
+        res.status(400).json({ message: "Please provide username, email, and password." });
+        return;
+      }
+  
+      // Email format validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        res.status(400).json({ message: "Invalid email format." });
+        return;
+      }
+  
+      // Password length validation
+      if (password.length < 6) {
+        res.status(400).json({ message: "Password must be at least 6 characters long." });
+        return;
+      }
+  
+      // Check if user already exists
+      const existingUser = await findUserByEmail(email);
+      if (existingUser) {
+        res.status(409).json({ message: "Email already in use." });
+        return;
+      }
+  
+      const user = await registerUser(username, email, password);
+      const token = generateToken(user);
+  
+      res.status(201).json({
+        message: "User registered successfully.",
+        user,
+        token,
+      });
     } catch (error) {
-        
+      console.error("Register Error:", error);
+      res.status(500).json({ error: "Registration failed." });
     }
-}
+  };
+  
 
-
-export const loginUserController = async(req:Request , res:Response):Promise<void>=>{
-    const {email , password} = req.body ;
+  export const loginUserController = async (req: Request, res: Response): Promise<void> => {
+    const { email, password } = req.body;
+  
     try {
-        const user = await findUserByEmail(email);
-        if (!user || !user.password || !(await bcrypt.compare(password, user.password))) {
-             res.status(401).json({ error: "Invalid credentials" });
-          }
-
-          if (!user) {
-              res.status(401).json({ error: "Invalid credentials" });
-              return;
-          }
-
-          res.status(201).json({
-            message:"User Logged in successfully",
-             user,
-             token: generateToken(user)
-          })
+      if (!email || !password) {
+        res.status(400).json({ message: "Please provide both email and password." });
+        return;
+      }
+  
+      const user = await findUserByEmail(email);
+  
+      if (!user) {
+        res.status(401).json({ error: "Invalid email or password." });
+        return;
+      }
+  
+      if (!user.password) {
+        res.status(400).json({ error: "This user signed up with OAuth. Use Google or GitHub login." });
+        return;
+      }
+  
+      const isPasswordCorrect = await bcrypt.compare(password, user.password);
+      if (!isPasswordCorrect) {
+        res.status(401).json({ error: "Invalid email or password." });
+        return;
+      }
+  
+      const token = generateToken(user);
+      res.status(200).json({
+        message: "Logged in successfully.",
+        user,
+        token,
+      });
     } catch (error) {
-        res.status(500).json({
-            error:"Login Failed"
-        })
+      console.error("Login Error:", error);
+      res.status(500).json({ error: "Login failed." });
     }
-}
+  };
+  
 
 
 export const googleOAuthLoginController = async (req: Request, res: Response): Promise<void> => {
@@ -123,7 +159,9 @@ export const googleOAuthLoginController = async (req: Request, res: Response): P
 
 
 export const githubOAuthController = async (req: Request, res: Response): Promise<void> => {
-  const { code } = req.query;
+  const { code } = req.body;
+  console.log("Received GitHub OAuth code:", code);
+
 
   if (!code || typeof code !== "string") {
       res.status(400).json({ error: "Authorization code is required" });
@@ -139,7 +177,7 @@ export const githubOAuthController = async (req: Request, res: Response): Promis
           },
           body: JSON.stringify({
               client_id: process.env.GITHUB_CLIENT_ID,
-              client_secret: process.env.GITHUB_CLIENT_SECRET,
+              client_secret: process.env.GITHUB_CLIENT_ID_SECRET,
               code,
           }),
       });

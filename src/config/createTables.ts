@@ -90,6 +90,13 @@ const createTables = async (): Promise<void> => {
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW()
         );
+
+       CREATE TABLE IF NOT EXISTS task_collaborators (
+        task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (task_id, user_id)
+      );
   
         CREATE TABLE IF NOT EXISTS todos (
           id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
